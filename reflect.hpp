@@ -1829,7 +1829,7 @@ consteval auto name_of_ptr_impl() {
     constexpr auto prefix = conststr::cstr("{(& ");
     constexpr auto suffix = conststr::cstr(")}]");
 #elif defined(_MSC_VER)
-    constexpr auto prefix = conststr::cstr("&reflect::fake_obj<");
+    constexpr auto prefix = conststr::cstr("reflect::fake_obj<");
     constexpr auto suffix = conststr::cstr("}>");
 #endif
     constexpr auto begin = name.find(prefix) + prefix.size();
@@ -1839,9 +1839,21 @@ consteval auto name_of_ptr_impl() {
     return basename_of<path>;
 }
 
+#ifdef _MSC_VER
+/**
+ * @brief Name of N-th member of a default-constructible aggregate type `T`.
+ * @tparam T any default-constructible aggregate type
+ * @tparam N index of member
+ * @note Because MSVC will fail in some cases when compiling `name_of_ptr`,
+ * therefore, a dedicated version is implemented for it.
+ */
+template <typename T, std::size_t N>
+constexpr auto name_of = name_of_ptr_impl<cptr_of_member<T, N>()>();
+#else
 /**
  * @brief Get the variable or class member name from its pointer.
  * @tparam Ptr pointer to the the variable or class member you want to reflect.
+ * @note MSVC currently fails to compile it when `Ptr` points to an array.
  */
 template <cptr Ptr>
 constexpr auto name_of_ptr = name_of_ptr_impl<Ptr>();
@@ -1853,6 +1865,7 @@ constexpr auto name_of_ptr = name_of_ptr_impl<Ptr>();
  */
 template <typename T, std::size_t N>
 constexpr auto name_of = name_of_ptr<cptr_of_member<T, N>()>;
+#endif
 }  // namespace reflect
 
 #endif

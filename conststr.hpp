@@ -905,7 +905,7 @@ struct cstr {
     }
 
     /**
-     * @brief Check if the contents of two string are the same.
+     * @brief Check if the contents of two strings are the same.
      * @tparam N2 size of another string
      * @tparam V2 view type of another string
      * @param other another string to be compared
@@ -918,10 +918,10 @@ struct cstr {
     }
 
     /**
-     * @brief Check if the contents of two string are the same.
+     * @brief Check if the contents of two strings are the same.
      * @tparam V2 view type of another string
      * @param other another string to be compared
-     * @return `true` if the contents of two string are the same.
+     * @return `true` if the contents of two strings are the same.
      * @return `false` otherwise.
      */
     template <typename V2>
@@ -931,13 +931,13 @@ struct cstr {
     }
 
     /**
-     * @brief Compares the contents of two string lexicographically.
+     * @brief Compares the contents of two strings lexicographically.
      * @note Do not use `s1 <=> s2` directly, this operator will automatically derive
      * other logical operators: `>`, `<`, `>=` and `<=`.
      * @tparam N2 size of another string
      * @tparam V2 view type of another string
      * @param other another string to be compared
-     * @return Ordering of two string.
+     * @return Ordering of two strings.
      */
     template <std::size_t N2, typename V2>
     constexpr auto operator<=>(const cstr<N2, value_type, V2> &other) noexcept {

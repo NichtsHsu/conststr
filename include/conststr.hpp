@@ -183,8 +183,8 @@
  * 
  *     std::cout << reflect::number_of_members<MyStruct> << std::endl; // 3 members in `MyStruct`
  *     std::cout << reflect::name_of<MyStruct, 0> << std::endl;        // first member is "number"
- *     std::cout << reflect::name_of<MyStruct, 1> << std::endl;        // first member is "decimal"
- *     std::cout << reflect::name_of<MyStruct, 2> << std::endl;        // first member is "name"
+ *     std::cout << reflect::name_of<MyStruct, 1> << std::endl;        // second member is "decimal"
+ *     std::cout << reflect::name_of<MyStruct, 2> << std::endl;        // third member is "name"
  * 
  *     return 0;
  * }

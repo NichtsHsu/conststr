@@ -1527,7 +1527,7 @@ struct cstr {
      * @return `true` if the string begins with the provided character.
      * @return `false` otherwise.
      */
-    constexpr bool start_with(const value_type &ch) const noexcept {
+    constexpr bool starts_with(const value_type &ch) const noexcept {
         if constexpr (N == 0)
             return false;
         else
@@ -1542,7 +1542,7 @@ struct cstr {
      * @return `false` otherwise.
      */
     template <size_type N2>
-    constexpr bool start_with(
+    constexpr bool starts_with(
         const cstr<N2, value_type, view_type> &str) const noexcept {
         if constexpr (N2 > N)
             return false;
@@ -1556,7 +1556,7 @@ struct cstr {
      * @return `true` if the string ends with the provided character.
      * @return `false` otherwise.
      */
-    constexpr bool end_with(const value_type &ch) const noexcept {
+    constexpr bool ends_with(const value_type &ch) const noexcept {
         if constexpr (N == 0)
             return false;
         else
@@ -1571,7 +1571,7 @@ struct cstr {
      * @return `false` otherwise.
      */
     template <size_type N2>
-    constexpr bool end_with(
+    constexpr bool ends_with(
         const cstr<N2, value_type, view_type> &str) const noexcept {
         if constexpr (N2 > N)
             return false;

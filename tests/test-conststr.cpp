@@ -47,14 +47,14 @@ int main() {
                   hello_world.npos);
     static_assert(hello_world.contains('w'));
     static_assert(!hello_world.contains('f'));
-    static_assert(hello_world.start_with('h'));
-    static_assert(!hello_world.start_with('H'));
-    static_assert(hello_world.start_with("hell"_cs));
-    static_assert(!hello_world.start_with("helo"_cs));
-    static_assert(hello_world.end_with('!'));
-    static_assert(!hello_world.end_with('d'));
-    static_assert(hello_world.end_with("d!"_cs));
-    static_assert(!hello_world.end_with("rd!"_cs));
+    static_assert(hello_world.starts_with('h'));
+    static_assert(!hello_world.starts_with('H'));
+    static_assert(hello_world.starts_with("hell"_cs));
+    static_assert(!hello_world.starts_with("helo"_cs));
+    static_assert(hello_world.ends_with('!'));
+    static_assert(!hello_world.ends_with('d'));
+    static_assert(hello_world.ends_with("d!"_cs));
+    static_assert(!hello_world.ends_with("rd!"_cs));
 
     std::cout << __FILE__ ": all tests passed." << std::endl;
     return 0;

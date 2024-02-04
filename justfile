@@ -1,6 +1,6 @@
 srcs := "./tests/*.cpp"
 outpath := "./build"
-include := "./"
+include := "./include"
 default_cc := "/usr/bin/env g++"
 cppflags := "-std=c++20 -Wall"
 

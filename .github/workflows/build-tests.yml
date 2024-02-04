@@ -17,7 +17,18 @@ jobs:
           sudo apt update
           sudo apt install cargo
           cargo install just
-      - uses: actions/checkout@v4
-      - name: Build and Run tests
+      - name: Install GCC 12
         run: |
-          just t
+          sudo apt update
+          sudo apt install gcc-12 g++-12
+      - name: Install Clang 14
+        run: |
+          sudo apt update
+          sudo apt install llvm-14 libstdc++-12-dev
+      - uses: actions/checkout@v4
+      - name: Build and Run Tests with GCC 12
+        run: |
+          just t g++12
+      - name: Build and Run Test with Clang 14
+        run: |
+          just t clang++14

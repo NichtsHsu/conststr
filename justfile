@@ -9,6 +9,7 @@ alias t := run-tests
 
 build-tests cc=default_cc:
     #!/bin/bash
+    set -e
     set -x
     mkdir -p {{ outpath }}
     for src in {{ srcs }}; do
@@ -19,6 +20,7 @@ build-tests cc=default_cc:
 
 run-tests cc=default_cc: (build-tests cc)
     #!/bin/bash
+    set -e
     set -x
     for bin in {{ outpath }}/*; do
         $bin;

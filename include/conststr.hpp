@@ -199,6 +199,7 @@
 #include <cstddef>
 #include <iostream>
 #include <iterator>
+#include <span>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -298,6 +299,24 @@ concept all_same_of = all_same<std::remove_cvref_t<decltype(Vs)>...>;
 template <typename T>
 concept hashable = requires(std::hash<std::remove_cvref_t<T>> hash,
                             const std::remove_cvref_t<T> &obj) { hash(obj); };
+
+/**
+ * @brief This concept is satisfied if `T` is a view type to a constant
+ * contiguous sequence of `Elem`.
+ * @tparam T view type
+ * @tparam Elem element type
+ * @tparam SizeT size type of the sequence
+ */
+template <typename T, typename Elem, typename SizeT>
+concept viewer =
+    std::constructible_from<T, const Elem *, SizeT> && requires(const T &t) {
+        t.begin();
+        t.end();
+        t.rbegin();
+        t.rend();
+        t.size();
+        t[SizeT{}];
+    };
 }  // namespace meta
 
 /**
@@ -312,7 +331,8 @@ namespace charutils {
  * @tparam T any char-like type
  */
 template <typename T>
-concept char_like = std::is_trivial_v<T> && std::three_way_comparable<T> &&
+concept char_like = std::is_trivial_v<T> && std::equality_comparable<T> &&
+                    std::three_way_comparable<T> &&
                     requires { T('\0') + T('\x20') - T('\x20'); };
 
 /**
@@ -455,7 +475,7 @@ constexpr char invert(T ch) {
  */
 template <char_like auto... Chs>
 constexpr bool is(meta::first_t_of<Chs...> ch)
-    requires meta::all_same_of<Chs...>
+    requires meta::all_same_of<Chs...> && (sizeof...(Chs) > 1)
 {
     return ((Chs == ch) || ...);
 }
@@ -496,7 +516,7 @@ constexpr decltype(Ch) just(decltype(Ch) ignored) {
  */
 template <char_like auto... Chs>
 constexpr meta::last_t_of<Chs...> replace(meta::last_t_of<Chs...> ch)
-    requires meta::all_same_of<Chs...>
+    requires meta::all_same_of<Chs...> && (sizeof...(Chs) > 1)
 {
     return is<Chs...>(ch) ? meta::last_v<Chs...> : ch;
 }
@@ -519,11 +539,45 @@ constexpr meta::last_t_of<Chs...> replace(meta::last_t_of<Chs...> ch)
  */
 template <char_like auto... Chs>
 constexpr meta::last_t_of<Chs...> remain(meta::last_t_of<Chs...> ch)
-    requires meta::all_same_of<Chs...>
+    requires meta::all_same_of<Chs...> && (sizeof...(Chs) > 1)
 {
     return is<Chs...>(ch) ? ch : meta::last_v<Chs...>;
 }
 }  // namespace charutils
+
+template <std::size_t N, charutils::char_like T, typename view>
+    requires meta::viewer<view, T, std::size_t>
+struct cstr;
+
+/**
+ * @brief This concept is satisfied if `cstr` can be constructed from `T`.
+ * @tparam T type that can be used to construct `cstr`
+ */
+template <typename T>
+concept can_construct_cstr_from = requires(const T &t) { cstr{t}; };
+
+/**
+ * @brief This concept is satisfied if `cstr` can be constructed from `T` and the
+ * `value_type` of the `cstr` is `CharT`.
+ * @tparam T type that can be used to construct `cstr`
+ * @tparam CharT expected `value_type` of `cstr`
+ */
+template <typename T, typename CharT>
+concept can_construct_cstr_t_from =
+    std::same_as<typename decltype(cstr(std::declval<T>()))::value_type, CharT>;
+
+/**
+ * @brief This concept is satisfied if `cstr` can be constructed from `T` and the
+ * `value_type` of the `cstr` is `CharT` and length is `Len`.
+ * @tparam T type that can be used to construct `cstr`
+ * @tparam Len expected length of `cstr`
+ * @tparam CharT expected `value_type` of `cstr`
+ */
+template <typename T, typename CharT, std::size_t Len>
+concept can_construct_cstr_t_n_from =
+    std::same_as<typename decltype(cstr(std::declval<T>()))::value_type,
+                 CharT> &&
+    (decltype(cstr(std::declval<T>()))::size() == Len);
 
 /**
  * @brief String type that can be evaluated in a constant context.
@@ -536,6 +590,7 @@ constexpr meta::last_t_of<Chs...> remain(meta::last_t_of<Chs...> ch)
  */
 template <std::size_t N, charutils::char_like T = char,
           typename view = std::basic_string_view<T>>
+    requires meta::viewer<view, T, std::size_t>
 struct cstr {
     using value_type = T;
     using size_type = std::size_t;
@@ -601,9 +656,13 @@ struct cstr {
     constexpr cstr(const cstr &) = default;
 
     /**
-     * @brief Move constructor. In fact, it just copies.
+     * @brief Copy from another string with different view type.
      */
-    constexpr cstr(cstr &&) = default;
+    template <typename V2>
+    constexpr cstr(const cstr<N, value_type, V2> &other) {
+        std::copy_n(other.begin(), size(), begin());
+        _str[N] = nul;
+    };
 
     /**
      * @brief Destructor. In fact, it does nothing.
@@ -613,12 +672,12 @@ struct cstr {
     /**
      * @brief Replaces the contents with a copy of another string.
      */
-    constexpr cstr &operator=(const cstr &) = default;
-
-    /**
-     * @brief Replaces the contents with a copy of another string.
-     */
-    constexpr cstr &operator=(cstr &&) = default;
+    template <can_construct_cstr_t_n_from<value_type, N> Str>
+    constexpr cstr &operator=(const Str &str) {
+        auto other = cstr(str);
+        std::copy_n(other.begin(), size(), begin());
+        return *this;
+    };
 
     /**
      * @brief Fill the string with the character `ch`.
@@ -641,14 +700,14 @@ struct cstr {
      * @brief Get size of string, without counting the null terminator.
      * @return The number of character element in the string.
      */
-    static consteval size_type size() noexcept { return N; }
+    static constexpr size_type size() noexcept { return N; }
 
     /**
      * @brief Alternative API of `size()`.
      * Get size of string, without counting the null terminator.
      * @return The number of character element in the string.
      */
-    static consteval size_type length() noexcept { return size(); }
+    static constexpr size_type length() noexcept { return size(); }
 
     /**
      * @brief
@@ -656,7 +715,7 @@ struct cstr {
      * Always the same as `size()`.
      * @return Maximum number of characters.
      */
-    static consteval size_type max_size() noexcept { return size(); }
+    static constexpr size_type max_size() noexcept { return size(); }
 
     /**
      * @brief Checks if string is empty.
@@ -666,7 +725,7 @@ struct cstr {
      * @return `true` if string is empty.
      * @return `false` otherwise.
      */
-    static consteval bool empty() noexcept { return size() == 0; }
+    static constexpr bool empty() noexcept { return size() == 0; }
 
     /**
      * @brief
@@ -883,24 +942,13 @@ struct cstr {
     }
 
     /**
-     * @brief Concatenate the contents with a single character.
-     * @param ch character to be added
-     * @return The concatenated strings.
-     */
-    constexpr auto operator+(const value_type &ch) const noexcept
-        -> cstr<N + 1, value_type, view_type> {
-        return append(ch);
-    }
-
-    /**
      * @brief Concatenate the contents with another string.
-     * @tparam N2 size of another string
+     * @tparam Str type of another string
      * @param str another string to be concatenated
      * @return New string containing the concatenated contents of two strings.
      */
-    template <size_type N2>
-    constexpr auto operator+(const cstr<N2, value_type, view_type> &str)
-        const noexcept -> cstr<N + N2, value_type, view_type> {
+    template <can_construct_cstr_t_from<value_type> Str>
+    constexpr auto operator+(const Str &str) const noexcept {
         return append(str);
     }
 
@@ -927,7 +975,23 @@ struct cstr {
     template <typename V2>
     constexpr bool operator==(
         const cstr<N, value_type, V2> &other) const noexcept {
-        return std::equal(cbegin(), cend(), other.cbegin());
+        if constexpr (std::equality_comparable<view_type>)
+            return this->operator view_type() == other.operator view_type();
+        else
+            return std::equal(cbegin(), cend(), other.cbegin(), other.cend());
+    }
+
+    /**
+     * @brief Check if the contents of two strings are the same.
+     * @param other another string to be compared
+     * @return `true` if the contents of two strings are the same.
+     * @return `false` otherwise.
+     */
+    constexpr bool operator==(const view_type &other) const noexcept {
+        if constexpr (std::equality_comparable<view_type>)
+            return this->operator view_type() == other;
+        else
+            return std::equal(cbegin(), cend(), other.begin(), other.end());
     }
 
     /**
@@ -941,17 +1005,43 @@ struct cstr {
      */
     template <std::size_t N2, typename V2>
     constexpr auto operator<=>(const cstr<N2, value_type, V2> &other) noexcept {
-        return std::lexicographical_compare_three_way(
-            cbegin(), cend(), other.cbegin(), other.cend());
+        if constexpr (std::three_way_comparable<view_type>)
+            return this->operator view_type() <=> other.operator view_type();
+        else
+            return std::lexicographical_compare_three_way(
+                cbegin(), cend(), other.cbegin(), other.cend());
+    }
+
+    /**
+     * @brief Compares the contents of two strings lexicographically.
+     * @note Do not use `s1 <=> s2` directly, this operator will automatically derive
+     * other logical operators: `>`, `<`, `>=` and `<=`.
+     * @param other another string to be compared
+     * @return Ordering of two strings.
+     */
+    constexpr auto operator<=>(const view_type &other) const noexcept {
+        if constexpr (std::three_way_comparable<view_type>)
+            return this->operator view_type() <=> other;
+        else
+            return std::lexicographical_compare_three_way(
+                cbegin(), cend(), other.begin(), other.end());
     }
 
     /**
      * @brief Implicit conversion to the view type.
      */
-    constexpr operator view_type() const noexcept
-        requires(!std::same_as<view_type, void>)
-    {
+    constexpr operator view_type() const noexcept {
         return view_type(data(), size());
+    }
+
+    /**
+     * @brief Change view type.
+     * @tparam V2 new view type
+     * @return String with new view type
+     */
+    template <meta::viewer<value_type, size_type> V2>
+    constexpr auto with_view() const noexcept -> cstr<N, value_type, V2> {
+        return cstr<N, value_type, V2>{*this};
     }
 
     /**
@@ -978,6 +1068,27 @@ struct cstr {
     template <size_type Len>
     constexpr auto cut() const noexcept -> cstr<Len, value_type, view_type> {
         return substr<0, Len>();
+    }
+
+    /**
+     * @brief Remove `Len` bytes of prefix. Always be equivalent to `substr<Len>()`.
+     * @tparam Len bytes of prefix to remove
+     * @return The substring [`Len`, `size()`).
+     */
+    template <size_type Len>
+    constexpr auto remove_prefix() const noexcept {
+        return substr<Len>();
+    }
+
+    /**
+     * @brief Remove `Len` bytes of suffix. Always be equivalent to
+     * `substr<0, size() - Len>()`.
+     * @tparam Len bytes of suffix to remove
+     * @return The substring [0, `size() - Len`).
+     */
+    template <size_type Len>
+    constexpr auto remove_suffix() const noexcept {
+        return substr<0, N - Len>();
     }
 
     /**
@@ -1035,52 +1146,46 @@ struct cstr {
      * @brief Insert another string at the position `pos`.
      * @note This method changes the string length, therefore it does not change `*this`,
      * but returns the modified string.
-     * @tparam N2 size of another string
+     * @tparam Str type of another string
      * @param pos position that the characters will be inserted
      * @param str string to insert
      * @return The modified string.
      */
-    template <size_type N2>
-    constexpr auto insert(size_type pos,
-                          const cstr<N2, value_type, view_type> &str)
-        const noexcept -> cstr<N + N2, value_type, view_type> {
+    template <can_construct_cstr_t_from<value_type> Str>
+    constexpr auto insert(size_type pos, const Str &str) const noexcept {
         if (pos > N) pos = N;
-        if constexpr (N2 == 0)
-            return *this;
-        else {
-            cstr<N + N2, value_type, view_type> ret{};
-            for (size_type i = 0; i < pos; ++i) ret[i] = _str[i];
-            for (size_type i = 0; i < N2; ++i) ret[i + pos] = str[i];
-            for (size_type i = pos; i < N; ++i) ret[i + N2] = _str[i];
-            return ret;
-        }
+
+        auto other = conststr::cstr(str);
+        constexpr size_type N2 = decltype(other)::size();
+        cstr<N + N2, value_type, view_type> ret{};
+        for (size_type i = 0; i < pos; ++i) ret[i] = _str[i];
+        for (size_type i = 0; i < N2; ++i) ret[i + pos] = other[i];
+        for (size_type i = pos; i < N; ++i) ret[i + N2] = _str[i];
+        return ret;
     }
 
     /**
      * @brief Insert another string before iterator `iter`.
      * @note This method changes the string length, therefore it does not change `*this`,
      * but returns the modified string.
-     * @tparam N2 size of another string
+     * @tparam Str type of another string
      * @param iter iterator before which the characters will be inserted
      * @param str string to insert
      * @return The modified string.
      */
-    template <size_type N2>
-    constexpr auto insert(const_iterator iter,
-                          const cstr<N2, value_type, view_type> &str)
-        const noexcept -> cstr<N + N2, value_type, view_type> {
+    template <can_construct_cstr_t_from<value_type> Str>
+    constexpr auto insert(const_iterator iter, const Str &str) const noexcept {
         iter = std::max(iter, cbegin());
         size_type pos = iter - cbegin();
         if (pos > N) pos = N;
-        if constexpr (N2 == 0)
-            return *this;
-        else {
-            cstr<N + N2, value_type, view_type> ret{};
-            for (size_type i = 0; i < pos; ++i) ret[i] = _str[i];
-            for (size_type i = 0; i < N2; ++i) ret[i + pos] = str[i];
-            for (size_type i = pos; i < N; ++i) ret[i + N2] = _str[i];
-            return ret;
-        }
+
+        auto other = conststr::cstr(str);
+        constexpr size_type N2 = decltype(other)::size();
+        cstr<N + N2, value_type, view_type> ret{};
+        for (size_type i = 0; i < pos; ++i) ret[i] = _str[i];
+        for (size_type i = 0; i < N2; ++i) ret[i + pos] = other[i];
+        for (size_type i = pos; i < N; ++i) ret[i + N2] = _str[i];
+        return ret;
     }
 
     /**
@@ -1108,17 +1213,13 @@ struct cstr {
      * @brief Append another string at the end.
      * @note This method changes the string length, therefore it does not change `*this`,
      * but returns the modified string.
-     * @tparam N2 size of another string
+     * @tparam Str type of another string
      * @param str another string to append
      * @return The modified string.
      */
-    template <size_type N2>
-    constexpr auto append(const cstr<N2, value_type, view_type> &str)
-        const noexcept -> cstr<N + N2, value_type, view_type> {
-        if constexpr (N2 == 0)
-            return *this;
-        else
-            return flatten(str);
+    template <can_construct_cstr_t_from<value_type> Str>
+    constexpr auto append(const Str &str) const noexcept {
+        return flatten(str);
     }
 
     /**
@@ -1137,9 +1238,7 @@ struct cstr {
             return *this;
         else {
             constexpr size_type COUNT = sizeof...(strs) + 1;
-            constexpr size_type LENGTHS[COUNT] = {
-                std::remove_cvref_t<decltype(*this)>::size(),
-                std::remove_cvref_t<decltype(strs)>::size()...};
+            constexpr size_type LENGTHS[COUNT] = {N, Sizes...};
             constexpr size_type FLAT_LENGTH = N + (Sizes + ...);
 
             cstr<FLAT_LENGTH, value_type, view_type> flat{};
@@ -1151,6 +1250,21 @@ struct cstr {
 
             return flat;
         }
+    }
+
+    /**
+     * @brief Flatten multiple strings of different lengths.
+     * @note
+     * Use the out-of-class `flatten()` function to better suit metaprogramming.
+     * @note This method changes the string length, therefore it does not change `*this`,
+     * but returns the modified string.
+     * @tparam Strs types of strings
+     * @param strs strings to be flattened
+     * @return Concatenated string.
+     */
+    template <can_construct_cstr_t_from<value_type>... Strs>
+    constexpr auto flatten(const Strs &...strs) const noexcept {
+        return flatten(conststr::cstr(strs)...);
     }
 
     /**
@@ -1205,21 +1319,18 @@ struct cstr {
      * `min(pos + str.size() * count, size())`) with another string `str`.
      * @note To maintain API uniformity, this method does not change `*this`,
      * but returns the modified string.
-     * @tparam N2 size of another string
      * @param pos start of the substring that is going to be replaced
      * @param str string to use for replacement
      * @param count replacement times of `str`
      * @return The modified string.
      */
-    template <size_type N2>
-    constexpr auto replace(size_type pos,
-                           const cstr<N2, value_type, view_type> &str,
+    constexpr auto replace(size_type pos, const view_type &str,
                            size_type count = 1) const noexcept
         -> cstr<N, value_type, view_type> {
         if (pos > N) pos = N;
         cstr<N, value_type, view_type> ret = *this;
-        size_type end = std::min(pos + count * N2, N);
-        for (size_type i = 0; i < end - pos; ++i) ret[i] = str[i % N2];
+        size_type end = std::min(pos + count * str.size(), N);
+        for (size_type i = 0; i < end - pos; ++i) ret[i] = str[i % str.size()];
         return ret;
     }
 
@@ -1228,24 +1339,19 @@ struct cstr {
      * `min(last, cend())`) with another string `str`.
      * @note To maintain API uniformity, this method does not change `*this`,
      * but returns the modified string.
-     * @tparam N2 size of another string
      * @param first begin of range of characters that is going to be replaced
      * @param last end of range of characters that is going to be replaced
      * @param str string to use for replacement
      * @return The modified string.
      */
-    template <size_type N2>
     constexpr auto replace(const_iterator first, const_iterator last,
-                           const cstr<N2, value_type, view_type> &str)
-        const noexcept -> cstr<N, value_type, view_type> {
+                           const view_type &str) const noexcept
+        -> cstr<N, value_type, view_type> {
         first = std::max(first, cbegin());
         last = std::min(last, cend());
         size_type pos = first - cbegin();
         size_type count = last - first;
-        cstr<N, value_type, view_type> ret = *this;
-        size_type end = std::min(pos + count * N2, N);
-        for (size_type i = 0; i < end - pos; ++i) ret[i] = str[i % N2];
-        return ret;
+        return replace(pos, str, count);
     }
 
     /**
@@ -1266,7 +1372,9 @@ struct cstr {
      */
     template <value_type... Chs>
     constexpr auto replace(size_type pos = 0, size_type len = N) const noexcept
-        -> cstr<N, value_type, view_type> {
+        -> cstr<N, value_type, view_type>
+        requires(sizeof...(Chs) > 0)
+    {
         return transform(charutils::replace<Chs...>, pos, len);
     }
 
@@ -1289,7 +1397,9 @@ struct cstr {
     template <value_type... Chs>
     constexpr auto replace(const_iterator first,
                            const_iterator last) const noexcept
-        -> cstr<N, value_type, view_type> {
+        -> cstr<N, value_type, view_type>
+        requires(sizeof...(Chs) > 0)
+    {
         return transform(charutils::replace<Chs...>, first, last);
     }
 
@@ -1366,13 +1476,18 @@ struct cstr {
      * @param pos start position of the range
      * @param len count of character to be handled
      * @return The generated string.
+     * @note If the return type `Ret` of the unary operation `op` is not `value_type`,
+     * then the view type of the generated string will be `std::basic_string_view<Ret>`.
      */
     template <typename UnaryOperation>
     constexpr auto transform(UnaryOperation op, size_type pos = 0,
                              size_type len = N) const noexcept {
         using result_t = std::remove_cvref_t<decltype(op(nul))>;
+        using view_t =
+            std::conditional_t<std::is_same_v<value_type, result_t>, view_type,
+                               std::basic_string_view<result_t>>;
         if (pos > N) pos = N;
-        cstr<N, result_t, view_type> ret{};
+        cstr<N, result_t, view_t> ret{};
         auto begin = cbegin() + pos;
         auto end = cbegin() + std::min(pos + len, N);
         auto begin2 = ret.begin() + pos;
@@ -1392,14 +1507,19 @@ struct cstr {
      * @param first iterator to the start position of the range
      * @param last iterator to the end position of the range
      * @return The generated string.
+     * @note If the return type `Ret` of the unary operation `op` is not `value_type`,
+     * then the view type of the generated string will be `std::basic_string_view<Ret>`.
      */
     template <typename UnaryOperation>
     constexpr auto transform(UnaryOperation op, const_iterator first,
                              const_iterator last) const noexcept {
         using result_t = std::remove_cvref_t<decltype(op(nul))>;
+        using view_t =
+            std::conditional_t<std::is_same_v<value_type, result_t>, view_type,
+                               std::basic_string_view<result_t>>;
         first = std::max(first, cbegin());
         last = std::min(last, cend());
-        cstr<N, result_t, view_type> ret{};
+        cstr<N, result_t, view_t> ret{};
         auto first2 = ret.begin() + (first - cbegin());
         std::transform(first, last, first2, op);
         return ret;
@@ -1446,13 +1566,11 @@ struct cstr {
 
     /**
      * @brief Find the first substring equal to the given substring.
-     * @tparam N2 size of substring
      * @param str substring to search for
      * @param pos position at which to start the search
      * @return Position of the first character of the found substring or `npos` if not found.
      */
-    template <size_type N2>
-    constexpr size_type find(const cstr<N2, value_type, view_type> &str,
+    constexpr size_type find(const view_type &str,
                              size_type pos = 0) const noexcept {
         if (pos >= npos) return npos;
         auto iter =
@@ -1476,18 +1594,16 @@ struct cstr {
 
     /**
      * @brief Find the last substring equal to the given substring.
-     * @tparam N2 size of substring
      * @param str substring to search for
      * @param pos position at which to start the search
      * @return Position of the first character of the found substring or `npos` if not found.
      */
-    template <size_type N2>
-    constexpr size_type rfind(const cstr<N2, value_type, view_type> &str,
+    constexpr size_type rfind(const view_type &str,
                               size_type pos = npos) const noexcept {
         auto beg =
             pos >= npos ? crbegin() : const_reverse_iterator(cbegin() + pos);
         auto iter = std::search(beg, crend(), str.crbegin(), str.crend());
-        return iter.base() - cbegin() - N2;
+        return iter.base() - cbegin() - str.size();
     }
 
     /**
@@ -1536,18 +1652,18 @@ struct cstr {
 
     /**
      * @brief Check if the string begins with the given substring.
-     * @tparam N2 length of the given substring
      * @param str any string
      * @return `true` if the string begins with the provided substring.
      * @return `false` otherwise.
      */
-    template <size_type N2>
-    constexpr bool starts_with(
-        const cstr<N2, value_type, view_type> &str) const noexcept {
-        if constexpr (N2 > N)
-            return false;
+    constexpr bool starts_with(const view_type &str) const noexcept {
+        if constexpr (requires { this->operator view_type().starts_with(str); })
+            return this->operator view_type().starts_with(str);
+        else if constexpr (std::equality_comparable<view_type>)
+            return size() > str.size() && view_type(begin(), str.size()) == str;
         else
-            return cut<N2>() == str;
+            return size() > str.size() &&
+                   std::equal(str.begin(), str.end(), begin());
     }
 
     /**
@@ -1565,18 +1681,19 @@ struct cstr {
 
     /**
      * @brief Check if the string ends with the given substring.
-     * @tparam N2 length of the given substring
      * @param str any string
      * @return `true` if the string ends with the provided substring.
      * @return `false` otherwise.
      */
-    template <size_type N2>
-    constexpr bool ends_with(
-        const cstr<N2, value_type, view_type> &str) const noexcept {
-        if constexpr (N2 > N)
-            return false;
+    constexpr bool ends_with(const view_type &str) const noexcept {
+        if constexpr (requires { this->operator view_type().ends_with(str); })
+            return this->operator view_type().ends_with(str);
+        else if constexpr (std::equality_comparable<view_type>)
+            return size() > str.size() &&
+                   view_type(end() - str.size(), str.size()) == str;
         else
-            return substr<N - N2, N2>() == str;
+            return size() > str.size() &&
+                   std::equal(str.begin(), str.end(), end() - str.size());
     }
 
     /**
@@ -1593,14 +1710,11 @@ struct cstr {
     /**
      * @brief Check if the string contains the given substring.
      * Always be equivalent to `find(str) != npos`.
-     * @tparam N2 length of the given substring
      * @param str any string
      * @return `true` if the string contains the provided substring.
      * @return `false` otherwise.
      */
-    template <size_type N2>
-    constexpr bool contains(
-        const cstr<N2, value_type, view_type> &str) const noexcept {
+    constexpr bool contains(const view_type &str) const noexcept {
         return find(str) != npos;
     }
 
@@ -1612,10 +1726,22 @@ struct cstr {
 };
 
 /**
+ * @brief Alias for `cstr` with `std::span` as default view type.
+ */
+template <std::size_t N, charutils::char_like T>
+using cstr_span = cstr<N, T, std::span<const T>>;
+
+/**
  * @brief Deduction guide for `cstr`
  */
 template <charutils::char_like T, std::size_t N>
 cstr(const T (&)[N]) -> cstr<N - 1, T, std::basic_string_view<T>>;
+
+/**
+ * @brief Deduction guide for `cstr`
+ */
+template <charutils::char_like T>
+cstr(const T &ch) -> cstr<1, T, std::basic_string_view<T>>;
 
 /**
  * @brief Tuple-like interface, extracts the Idx-th element from the string.
@@ -1681,11 +1807,13 @@ constexpr void swap(cstr<N, T, U> &lhs, cstr<N, T, U> &rhs) {
  * @param strs other strings to flattened
  * @return constexpr auto 
  */
-template <charutils::char_like T, typename U, std::size_t N,
-          std::size_t... Sizes>
-constexpr auto flatten(const cstr<N, T, U> &first,
-                       const cstr<Sizes, T, U> &...strs) {
-    return first.flatten(strs...);
+template <can_construct_cstr_from First, can_construct_cstr_from... Str>
+constexpr auto flatten(const First &first, const Str &...strs)
+    requires meta::all_same<
+        typename decltype(cstr(std::declval<First>()))::value_type,
+        typename decltype(cstr(std::declval<Str>()))::value_type...>
+{
+    return cstr(first).flatten(strs...);
 }
 
 /**
@@ -1702,15 +1830,50 @@ std::ostream &operator<<(std::ostream &os, const cstr<N, T, U> &str) {
  */
 namespace literal {
 /**
- * @brief User-defined string literal.
+ * @brief User-defined string literal with suffix `_cs`.
+ * @details
+ * Simply `using` this namespace to create `cstr` through `'a'_cs`.
+ */
+consteval auto operator""_cs(char ch) { return cstr<1, char>(ch); }
+
+/**
+ * @brief User-defined string literal with suffix `_cs`.
+ * @details
+ * Simply `using` this namespace to create `cstr` through `u8'a'_cs`.
+ */
+consteval auto operator""_cs(char8_t ch) { return cstr<1, char8_t>(ch); }
+
+/**
+ * @brief User-defined string literal with suffix `_cs`.
+ * @details
+ * Simply `using` this namespace to create `cstr` through `u'a'_cs`.
+ */
+consteval auto operator""_cs(char16_t ch) { return cstr<1, char16_t>(ch); }
+
+/**
+ * @brief User-defined string literal with suffix `_cs`.
+ * @details
+ * Simply `using` this namespace to create `cstr` through `U'a'_cs`.
+ */
+consteval auto operator""_cs(char32_t ch) { return cstr<1, char32_t>(ch); }
+
+/**
+ * @brief User-defined string literal with suffix `_cs`.
+ * @details
+ * Simply `using` this namespace to create `cstr` through `L'a'_cs`.
+ */
+consteval auto operator""_cs(wchar_t ch) { return cstr<1, wchar_t>(ch); }
+
+/**
+ * @brief User-defined string literal with suffix `_cs`.
  * @details
  * Simply `using` this namespace to create `cstr` through `"blabla"_cs`.
  */
 template <cstr str>
 consteval auto operator""_cs() {
     return str;
-};
-};  // namespace literal
+}
+}  // namespace literal
 
 }  // namespace conststr
 

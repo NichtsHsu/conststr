@@ -691,6 +691,7 @@ struct cstr {
      * to construct the `cstr` without worrying about the template type.
      * @note
      * A simpler way is to use the user-defined string literal like `"blabla"_cs`.
+     * @param str the input string array/literal
      * @param svs string view type selector, default view type is `std::basic_string_view`
      * @see conststr::literal
      * @see sv
@@ -704,6 +705,7 @@ struct cstr {
 
     /**
      * @brief Construct string with `N` copies of character `ch`.
+     * @param ch the character to fill
      * @param svs string view type selector, default view type is `std::basic_string_view`
      * @see sv
      */

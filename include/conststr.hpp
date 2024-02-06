@@ -134,6 +134,18 @@
  * constexpr view_type sv = str;
  * @endcode
  * 
+ * The view type of `cstr` defaults to `std::basic_string_view<T>`. You can choose
+ * different view types through the following methods:
+ * 
+ * @code{.cpp}
+ * #include <span>
+ * 
+ * using conststr::sv;
+ * 
+ * constexpr auto s1 = cstr("hello world!", sv<std::span<const char>>);
+ * constexpr auto s2 = "hello world!"_cs.with_view<std::span<const char>>();
+ * @endcode
+ * 
  * @section reflect Work with limited reflection
  * 
  * Thanks to the introduction of
@@ -199,7 +211,6 @@
 #include <cstddef>
 #include <iostream>
 #include <iterator>
-#include <span>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -307,7 +318,7 @@ concept hashable = requires(std::hash<std::remove_cvref_t<T>> hash,
  * @tparam Elem element type
  * @tparam SizeT size type of the sequence
  */
-template <typename T, typename Elem, typename SizeT>
+template <typename T, typename Elem, typename SizeT = std::size_t>
 concept viewer =
     std::constructible_from<T, const Elem *, SizeT> && requires(const T &t) {
         t.begin();
@@ -493,10 +504,19 @@ constexpr bool is(meta::first_t_of<Chs...> ch)
  * @return Value of `Ch`. 
  */
 template <char_like auto Ch>
-constexpr decltype(Ch) just(decltype(Ch) ignored) {
-    (void)ignored;
+constexpr decltype(Ch) just([[maybe_unused]] decltype(Ch) ignored) {
     return Ch;
 }
+
+/**
+ * @brief Cast input character to the value of another character type.
+ * @tparam To output character type
+ * @param from input character
+ * @return Casted character.
+ */
+template <char_like To>
+constexpr auto cast =
+    [](char_like auto from) -> To { return static_cast<To>(from); };
 
 /**
  * @brief
@@ -546,7 +566,7 @@ constexpr meta::last_t_of<Chs...> remain(meta::last_t_of<Chs...> ch)
 }  // namespace charutils
 
 template <std::size_t N, charutils::char_like T, typename view>
-    requires meta::viewer<view, T, std::size_t>
+    requires meta::viewer<view, T>
 struct cstr;
 
 /**
@@ -580,6 +600,40 @@ concept can_construct_cstr_t_n_from =
     (decltype(cstr(std::declval<T>()))::size() == Len);
 
 /**
+ * @brief String view type selector. Just an empty struct.
+ * @tparam T string view type
+ * @see sv
+ */
+template <typename T>
+struct sv_selector {};
+
+/**
+ * @brief String view type selector. Assist in type deduction of `cstr`.
+ * @details
+ * For example:
+ * 
+ * @code{.cpp}
+ * #include <span>
+ * #include "conststr.hpp"
+ * 
+ * using conststr::cstr;
+ * using conststr::sv;
+ * 
+ * // View type defaults to `std::string_view`, aka `std::basic_string_view<char>`
+ * constexpr auto s1 = cstr("hello world!");
+ * 
+ * // View type is `std::span<const char>`
+ * constexpr auto s2 = cstr("hello world!", sv<std::span<const char>>);
+ * 
+ * // You can also change the view type like this
+ * constexpr auto s3 = cstr("hello world!").with_view<std::span<const char>>();
+ * @endcode
+ * @tparam T string view type
+ */
+template <typename T>
+constexpr auto sv = sv_selector<T>{};
+
+/**
  * @brief String type that can be evaluated in a constant context.
  * @details
  * Very similar to `std::array<char, N>`, but null terminator will be added.
@@ -590,7 +644,7 @@ concept can_construct_cstr_t_n_from =
  */
 template <std::size_t N, charutils::char_like T = char,
           typename view = std::basic_string_view<T>>
-    requires meta::viewer<view, T, std::size_t>
+    requires meta::viewer<view, T>
 struct cstr {
     using value_type = T;
     using size_type = std::size_t;
@@ -607,6 +661,10 @@ struct cstr {
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
     using view_type = view;
 
+    template <typename UnaryOperation>
+    using operation_result =
+        std::remove_cvref_t<std::invoke_result_t<UnaryOperation, value_type>>;
+
     /**
      * @brief Null terminator with the value ``'\0'``.
      */
@@ -619,8 +677,12 @@ struct cstr {
 
     /**
      * @brief Default constructor, constructs string which is filled with ``'\0'``.
+     * @param svs string view type selector, default view type is `std::basic_string_view`
+     * @see sv
      */
-    constexpr cstr() noexcept : _str{nul} {}
+    constexpr cstr(
+        [[maybe_unused]] const sv_selector<view_type> &svs = {}) noexcept
+        : _str{nul} {}
 
     /**
      * @brief Construct string from string literal.
@@ -629,17 +691,27 @@ struct cstr {
      * to construct the `cstr` without worrying about the template type.
      * @note
      * A simpler way is to use the user-defined string literal like `"blabla"_cs`.
+     * @param svs string view type selector, default view type is `std::basic_string_view`
      * @see conststr::literal
+     * @see sv
      */
-    constexpr cstr(const value_type (&str)[N + 1]) noexcept {
+    constexpr cstr(
+        const value_type (&str)[N + 1],
+        [[maybe_unused]] const sv_selector<view_type> &svs = {}) noexcept {
         for (size_type i = 0; i < N; ++i) _str[i] = str[i];
         _str[N] = nul;
     }
 
     /**
      * @brief Construct string with `N` copies of character `ch`.
+     * @param svs string view type selector, default view type is `std::basic_string_view`
+     * @see sv
      */
-    constexpr cstr(const value_type &ch) noexcept { fill(ch); }
+    constexpr cstr(
+        const value_type &ch,
+        [[maybe_unused]] const sv_selector<view_type> &svs = {}) noexcept {
+        fill(ch);
+    }
 
     /**
      * @brief Constructor for variable template parameter pack expansion.
@@ -1471,21 +1543,30 @@ struct cstr {
      * but returns the modified string. If you really want to modify current string,
      * use `std::transform(str.begin(), str.end(), str.begin(), op)`.
      * @tparam UnaryOperation type of the unary operation function
+     * @tparam V view type for the transform result, by default, if return type `Ret`
+     * of the unary operation `op` is the same as the original value type,
+     * then the view type is left unchanged, otherwise it is `std::basic_string_view<Ret>`
      * @param op unary operation function object that will be applied, the signature
      * of the function should be `Ret f(const T &)` or `Ret f(T)`.
      * @param pos start position of the range
      * @param len count of character to be handled
+     * @param svs string view type selector
      * @return The generated string.
-     * @note If the return type `Ret` of the unary operation `op` is not `value_type`,
-     * then the view type of the generated string will be `std::basic_string_view<Ret>`.
+     * @see sv
      */
-    template <typename UnaryOperation>
-    constexpr auto transform(UnaryOperation op, size_type pos = 0,
-                             size_type len = N) const noexcept {
-        using result_t = std::remove_cvref_t<decltype(op(nul))>;
-        using view_t =
+    template <typename UnaryOperation, typename V2 = void>
+    constexpr auto transform(
+        UnaryOperation op, size_type pos = 0, size_type len = N,
+        [[maybe_unused]] const sv_selector<V2> &svs = {}) const noexcept
+        requires(meta::viewer<V2, operation_result<UnaryOperation>> ||
+                 (std::is_void_v<V2>))
+    {
+        using result_t = operation_result<UnaryOperation>;
+        using view_t = std::conditional_t<
+            std::is_void_v<V2>,
             std::conditional_t<std::is_same_v<value_type, result_t>, view_type,
-                               std::basic_string_view<result_t>>;
+                               std::basic_string_view<result_t>>,
+            V2>;
         if (pos > N) pos = N;
         cstr<N, result_t, view_t> ret{};
         auto begin = cbegin() + pos;
@@ -1502,27 +1583,53 @@ struct cstr {
      * but returns the modified string. If you really want to modify current string,
      * use `std::transform(str.begin(), str.end(), str.begin(), op)`.
      * @tparam UnaryOperation type of the unary operation function
+     * @tparam V2 view type for the transform result, by default, if return type `Ret`
+     * of the unary operation `op` is the same as the original value type,
+     * then the view type is left unchanged, otherwise it is `std::basic_string_view<Ret>`
      * @param op unary operation function object that will be applied, the signature
      * of the function should be `Ret f(const T &)` or `Ret f(T)`.
      * @param first iterator to the start position of the range
      * @param last iterator to the end position of the range
+     * @param svs string view type selector
      * @return The generated string.
-     * @note If the return type `Ret` of the unary operation `op` is not `value_type`,
-     * then the view type of the generated string will be `std::basic_string_view<Ret>`.
+     * @see sv
      */
-    template <typename UnaryOperation>
-    constexpr auto transform(UnaryOperation op, const_iterator first,
-                             const_iterator last) const noexcept {
-        using result_t = std::remove_cvref_t<decltype(op(nul))>;
-        using view_t =
+    template <typename UnaryOperation, typename V2 = void>
+    constexpr auto transform(
+        UnaryOperation op, const_iterator first, const_iterator last,
+        [[maybe_unused]] const sv_selector<V2> &svs = {}) const noexcept
+        requires(meta::viewer<V2, operation_result<UnaryOperation>> ||
+                 (std::is_void_v<V2>))
+    {
+        using result_t = operation_result<UnaryOperation>;
+        using view_t = std::conditional_t<
+            std::is_void_v<V2>,
             std::conditional_t<std::is_same_v<value_type, result_t>, view_type,
-                               std::basic_string_view<result_t>>;
+                               std::basic_string_view<result_t>>,
+            V2>;
         first = std::max(first, cbegin());
         last = std::min(last, cend());
         cstr<N, result_t, view_t> ret{};
         auto first2 = ret.begin() + (first - cbegin());
         std::transform(first, last, first2, op);
         return ret;
+    }
+
+    /**
+     * @brief Convert character type. Always be equivalent to
+     * `transform(charutils::cast<T2>, 0, N, sv<V2>)`.
+     * @tparam T2 another character type
+     * @tparam V2 view type of output string
+     * @param svs string view type selector
+     * @return String with another character type.
+     * @see sv
+     */
+    template <charutils::char_like T2, typename V2 = void>
+    constexpr auto cast(
+        [[maybe_unused]] const sv_selector<V2> &svs = {}) const noexcept
+        requires(meta::viewer<V2, T2> || (std::is_void_v<V2>))
+    {
+        return transform(charutils::cast<T2>, 0, N, sv<V2>);
     }
 
     /**
@@ -1726,16 +1833,16 @@ struct cstr {
 };
 
 /**
- * @brief Alias for `cstr` with `std::span` as default view type.
- */
-template <std::size_t N, charutils::char_like T>
-using cstr_span = cstr<N, T, std::span<const T>>;
-
-/**
- * @brief Deduction guide for `cstr`
+ * @brief Deduction guide for `cstr` with default view type.
  */
 template <charutils::char_like T, std::size_t N>
 cstr(const T (&)[N]) -> cstr<N - 1, T, std::basic_string_view<T>>;
+
+/**
+ * @brief Deduction guide for `cstr` with string view type selector.
+ */
+template <charutils::char_like T, std::size_t N, meta::viewer<T> V>
+cstr(const T (&)[N], const sv_selector<V> &) -> cstr<N - 1, T, V>;
 
 /**
  * @brief Deduction guide for `cstr`
@@ -1902,8 +2009,8 @@ template <conststr::charutils::char_like T, typename U, std::size_t N>
         typename conststr::cstr<N, T, U>::view_type>
 struct std::hash<conststr::cstr<N, T, U>> {
     std::size_t operator()(const conststr::cstr<N, T, U> &str) const noexcept {
-        using viewer = typename conststr::cstr<N, T, U>::view_type;
-        return std::hash<viewer>{}(static_cast<viewer>(str));
+        using view = typename conststr::cstr<N, T, U>::view_type;
+        return std::hash<view>{}(static_cast<view>(str));
     }
 };
 

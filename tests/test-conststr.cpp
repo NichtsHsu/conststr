@@ -1,8 +1,11 @@
+#include <array>
 #include <functional>
+#include <span>
 
 #include "conststr.hpp"
 
 using conststr::cstr;
+using conststr::sv;
 namespace charutils = conststr::charutils;
 using namespace conststr::literal;
 
@@ -78,18 +81,40 @@ int main() {
     static_assert(!hello_world.ends_with("rd!"_cs));
 
     // Unconventional character type
-    using conststr::cstr_span;
-    static constexpr auto integer_str =
-        cstr_span<5, int>({0x68, 0x65, 0x6c, 0x6c, 0x6f, 0});
+    // Remember: End the "raw string" with null terminator (0)
+    using int_arr = int[];
+    static constexpr auto integer_str = cstr(
+        int_arr{0x68, 0x65, 0x6c, 0x6c, 0x6f, 0}, sv<std::span<const int>>);
     static_assert(integer_str ==
-                  std::array<int, 5>({0x68, 0x65, 0x6c, 0x6c, 0x6f}));
+                  std::array<int, 5>{0x68, 0x65, 0x6c, 0x6c, 0x6f});
     static_assert(integer_str.starts_with(0x68));
-    static_assert(integer_str.starts_with(cstr_span<2, int>({0x68, 0x65})));
+    static_assert(integer_str.starts_with(
+        cstr(int_arr{0x68, 0x65, 0}, sv<std::span<const int>>)));
+    static_assert(integer_str.starts_with(std::array<int, 2>{0x68, 0x65}));
     static_assert(integer_str.ends_with(0x6f));
-    static_assert(integer_str.ends_with(cstr_span<2, int>({0x6c, 0x6f})));
-    constexpr auto to_char_str =
-        integer_str.transform([](int c) -> char { return char(c); });
+    static_assert(integer_str.ends_with(
+        cstr(int_arr{0x6c, 0x6f, 0}, sv<std::span<const int>>)));
+    static_assert(integer_str.ends_with(std::array<int, 2>{0x6c, 0x6f}));
+    constexpr auto to_char_str = integer_str.transform(charutils::cast<char>);
     static_assert(to_char_str == "hello");
+    static_assert(to_char_str == integer_str.cast<char>());
+    static_assert(
+        std::same_as<std::remove_cvref_t<decltype(to_char_str)>,
+                     std::remove_cvref_t<decltype(integer_str.cast<char>())>>);
+    static_assert(
+        std::same_as<decltype(to_char_str)::view_type, std::string_view>);
+    constexpr auto to_char_str_span =
+        integer_str.transform(charutils::cast<char>, 0, integer_str.size(),
+                              sv<std::span<const char>>);
+    static_assert(to_char_str_span == std::span<const char>("hello", 5));
+    static_assert(to_char_str_span ==
+                  integer_str.cast<char>(sv<std::span<const char>>));
+    static_assert(
+        std::same_as<std::remove_cvref_t<decltype(to_char_str_span)>,
+                     std::remove_cvref_t<decltype(integer_str.cast<char>(
+                         sv<std::span<const char>>))>>);
+    static_assert(std::same_as<decltype(to_char_str_span)::view_type,
+                               std::span<const char>>);
 
     std::cout << __FILE__ ": all tests passed." << std::endl;
 

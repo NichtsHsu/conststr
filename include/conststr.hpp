@@ -762,9 +762,11 @@ struct cstr {
 
     /**
      * @brief Swap the contents of this string with another string.
+     * @tparam V2 view type of another string
      * @param other another string to swap the contents
      */
-    constexpr void swap(cstr &other) noexcept {
+    template <typename V2>
+    constexpr void swap(cstr<N, value_type, V2> &other) noexcept {
         std::swap_ranges(begin(), end(), other.begin());
     }
 
@@ -1845,10 +1847,16 @@ template <charutils::char_like T, std::size_t N, meta::viewer<T> V>
 cstr(const T (&)[N], const sv_selector<V> &) -> cstr<N - 1, T, V>;
 
 /**
- * @brief Deduction guide for `cstr`
+ * @brief Deduction guide for `cstr` with default view type.
  */
 template <charutils::char_like T>
 cstr(const T &ch) -> cstr<1, T, std::basic_string_view<T>>;
+
+/**
+ * @brief Deduction guide for `cstr` with string view type selector.
+ */
+template <charutils::char_like T, meta::viewer<T> V>
+cstr(const T &ch, const sv_selector<V> &) -> cstr<1, T, V>;
 
 /**
  * @brief Tuple-like interface, extracts the Idx-th element from the string.
@@ -1900,8 +1908,8 @@ const typename cstr<N, T, U>::const_rreference get(
  * @param lhs the value to be swapped
  * @param rhs the value to be swapped
  */
-template <charutils::char_like T, typename U, std::size_t N>
-constexpr void swap(cstr<N, T, U> &lhs, cstr<N, T, U> &rhs) {
+template <charutils::char_like T, typename V1, typename V2, std::size_t N>
+constexpr void swap(cstr<N, T, V1> &lhs, cstr<N, T, V2> &rhs) {
     lhs.swap(rhs);
 }
 

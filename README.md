@@ -29,4 +29,4 @@ static_assert(newmsg == "HELL WORD?"_cs);
 
 Check the [document](https://conststr.docs.nihil.cc/) or [tests](https://github.com/NichtsHsu/conststr/tree/master/tests) to learn more.
 
-All [tests](https://github.com/NichtsHsu/conststr/tree/master/tests) passed under GCC-12, clang-14 and MSVC(newest). Maybe lower versions can also pass the tests, but I haven't tested them and will never guarantee compatibility.
+All [tests](https://github.com/NichtsHsu/conststr/tree/master/tests) passed under GCC-12, Clang-14 and MSVC(newest). Maybe lower versions can also pass the tests, but I haven't tested them and will never guarantee compatibility.

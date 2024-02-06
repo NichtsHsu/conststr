@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and Run Tests with GCC 12
         run: |
-          just t g++12
+          just t g++-12
       - name: Build and Run Test with Clang 14
         run: |
-          just t clang++14
+          just t clang++-14

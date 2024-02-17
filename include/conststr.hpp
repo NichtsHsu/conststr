@@ -220,16 +220,6 @@
  */
 namespace conststr {
 
-#if defined(__GNUC__) || defined(__clang__)
-#if __cplusplus >= 202100L
-#define CSTR_USE_CPP23
-#endif
-#elif defined(_MSC_VER)
-#if _MSVC_LANG > 202002L
-#define CSTR_USE_CPP23
-#endif
-#endif
-
 /**
  * @brief Some useful template meta.
  */

@@ -1,17 +1,17 @@
-
 CC = cl
 INCLUDES = ./include
-CXXFLAGS = /std:c++20 /EHs /Wall /Fo./build/
+OUTPATH = ./build
+CXXFLAGS = /std:c++20 /EHs /Wall /Fo"$(OUTPATH)/"
 
 EXES = $(**:.cpp=.exe)
 
 .SUFFIXES: .cpp .exe
 all: tests\*.cpp
-    mkdir build
+    IF NOT EXIST "$(OUTPATH)" md "$(OUTPATH)"
     $(MAKE) /f nmakefile $(EXES:tests=build)
 
 {tests\}.cpp{build\}.exe:
-    $(CC) /I $(INCLUDES) $(CXXFLAGS) /Fe$@ $<
+    $(CC) /I "$(INCLUDES)" $(CXXFLAGS) /Fe"$@" "$<"
 
 clean:
-    del /Q build
+    rd /s /q "$(OUTPATH)"

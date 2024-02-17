@@ -14,24 +14,24 @@ build-tests cc=default_cc:
     #!/bin/bash
     set -e
     set -x
-    mkdir -p {{ outpath }}
+    mkdir -p "{{ outpath }}"
     for src in {{ srcs }}; do
         file=`basename $src`;
         outbin="{{ outpath }}/${file%.*}";
-        {{ cc }} $src -I{{ include }} -o $outbin {{ cppflags }};
+        {{ cc }} $src -I"{{ include }}" -o "$outbin" {{ cppflags }};
     done
 
 run-tests cc=default_cc: (build-tests cc)
     #!/bin/bash
     set -e
     set -x
-    for bin in {{ outpath }}/*; do
+    for bin in "{{ outpath }}"/*; do
         $bin;
     done
 
 nmake-tests:
     nmake -f nmakefile
-    Get-ChildItem build -Filter *.exe | Foreach-Object { & $_.FullName }
+    Get-ChildItem "{{ outpath }}" -Filter *.exe | Foreach-Object { & $_.FullName }
 
 clean:
-    rm -r ./build
+    rm -r "{{ outpath }}"

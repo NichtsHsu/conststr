@@ -1194,9 +1194,7 @@ struct cstr {
     constexpr auto insert(const_iterator iter,
                           const value_type &ch) const noexcept
         -> cstr<N + Count, value_type, view_type> {
-        iter = std::max(iter, cbegin());
-        size_type pos = iter - cbegin();
-        if (pos > N) pos = N;
+        size_type pos = to_pos(iter);
         if constexpr (Count == 0)
             return *this;
         else {
@@ -1241,10 +1239,7 @@ struct cstr {
      */
     template <can_construct_cstr_t_from<value_type> Str>
     constexpr auto insert(const_iterator iter, const Str &str) const noexcept {
-        iter = std::max(iter, cbegin());
-        size_type pos = iter - cbegin();
-        if (pos > N) pos = N;
-
+        size_type pos = to_pos(iter);
         auto other = conststr::cstr(str);
         constexpr size_type N2 = decltype(other)::size();
         cstr<N + N2, value_type, view_type> ret{};
@@ -1370,10 +1365,7 @@ struct cstr {
     constexpr auto replace(const_iterator first, const_iterator last,
                            const value_type &ch) const noexcept
         -> cstr<N, value_type, view_type> {
-        first = std::max(first, cbegin());
-        last = std::min(last, cend());
-        size_type pos = first - cbegin();
-        size_type count = last - first;
+        auto [pos, count] = to_pos_len(first, last);
         cstr<N, value_type, view_type> ret = *this;
         size_type end = std::min(pos + count, N);
         for (size_type i = pos; i < end; ++i) ret[i] = ch;
@@ -1413,10 +1405,7 @@ struct cstr {
     constexpr auto replace(const_iterator first, const_iterator last,
                            const view_type &str) const noexcept
         -> cstr<N, value_type, view_type> {
-        first = std::max(first, cbegin());
-        last = std::min(last, cend());
-        size_type pos = first - cbegin();
-        size_type count = last - first;
+        auto [pos, count] = to_pos_len(first, last);
         return replace(pos, str, count);
     }
 
@@ -1498,9 +1487,7 @@ struct cstr {
      */
     constexpr auto erase(const_iterator iter) const noexcept
         -> cstr<N - 1, value_type, view_type> {
-        iter = std::max(iter, cbegin());
-        size_type pos = iter - cbegin();
-        if (pos >= N) return pop();
+        size_type pos = to_pos(iter);
         cstr<N - 1, value_type, view_type> ret{};
         for (size_type i = 0; i < pos; ++i) ret[i] = _str[i];
         for (size_type i = pos; i < N - 1; ++i) ret[i] = _str[i + 1];
@@ -1661,8 +1648,7 @@ struct cstr {
     constexpr size_type find(const value_type &ch,
                              size_type pos = 0) const noexcept {
         if (pos >= npos) return npos;
-        auto iter = std::find(cbegin() + pos, cend(), ch);
-        return iter - cbegin();
+        return to_pos(std::find(cbegin() + pos, cend(), ch));
     }
 
     /**
@@ -1674,9 +1660,8 @@ struct cstr {
     constexpr size_type find(const view_type &str,
                              size_type pos = 0) const noexcept {
         if (pos >= npos) return npos;
-        auto iter =
-            std::search(cbegin() + pos, cend(), str.cbegin(), str.cend());
-        return iter - cbegin();
+        return to_pos(
+            std::search(cbegin() + pos, cend(), str.cbegin(), str.cend()));
     }
 
     /**
@@ -1690,7 +1675,7 @@ struct cstr {
         auto beg =
             pos >= npos ? crbegin() : const_reverse_iterator(cbegin() + pos);
         auto iter = std::find(beg, crend(), ch);
-        return iter.base() - cbegin() - 1;
+        return iter == crend() ? npos : to_pos(iter.base() - 1);
     }
 
     /**
@@ -1704,7 +1689,7 @@ struct cstr {
         auto beg =
             pos >= npos ? crbegin() : const_reverse_iterator(cbegin() + pos);
         auto iter = std::search(beg, crend(), str.crbegin(), str.crend());
-        return iter.base() - cbegin() - str.size();
+        return iter == crend() ? npos : to_pos(iter.base() - str.size());
     }
 
     /**
@@ -1718,8 +1703,7 @@ struct cstr {
     constexpr size_type find_if(UnaryPredicate p,
                                 size_type pos = 0) const noexcept {
         if (pos >= npos) return npos;
-        auto iter = std::find_if(cbegin() + pos, cend(), p);
-        return iter - cbegin();
+        return to_pos(std::find_if(cbegin() + pos, cend(), p));
     }
 
     /**
@@ -1735,7 +1719,7 @@ struct cstr {
         auto beg =
             pos >= npos ? crbegin() : const_reverse_iterator(begin() + pos);
         auto iter = std::find_if(beg, crend(), p);
-        return iter.base() - cbegin() - 1;
+        return iter == crend() ? npos : to_pos(iter.base() - 1);
     }
 
     /**
@@ -1824,6 +1808,18 @@ struct cstr {
      * you should not access it directly. Instead, you should use `begin()` and `end()`.
      */
     value_type _str[N + 1];
+
+   private:
+    inline constexpr size_t to_pos(const_iterator iter) const noexcept {
+        return std::min(size_t(std::max(iter, cbegin()) - cbegin()), N);
+    }
+
+    inline constexpr std::tuple<size_t, size_t> to_pos_len(
+        const_iterator first, const_iterator last) const noexcept {
+        size_t first_pos = to_pos(first);
+        size_t last_pos = to_pos(last);
+        return {first_pos, std::max(first_pos, last_pos) - first_pos};
+    }
 };
 
 /**

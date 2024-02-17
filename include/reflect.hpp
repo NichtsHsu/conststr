@@ -1727,7 +1727,7 @@ constexpr decltype(auto) to_tuple(T &&t)
  */
 template <typename T>
 struct cptr {
-    const T *const ptr;
+    const T *ptr;
 };
 
 #if defined(__clang__)

@@ -7,10 +7,8 @@ on:
     branches: [ "master" ]
 
 jobs:
-  build:
-
+  test-gcc-clang:
     runs-on: ubuntu-latest
-
     steps:
       - name: Install just
         run: |
@@ -32,3 +30,14 @@ jobs:
       - name: Build and Run Test with Clang 14
         run: |
           just t clang++-14
+
+  test-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          vsversion: 2022
+      - name: Build and run Test with MSVC
+        run: |
+          nmake /f nmakefile

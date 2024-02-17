@@ -1,0 +1,17 @@
+
+CC = cl
+INCLUDES = ./include
+CXXFLAGS = /std:c++20 /EHs /Wall /Fo./build/
+
+EXES = $(**:.cpp=.exe)
+
+.SUFFIXES: .cpp .exe
+all: tests\*.cpp
+    mkdir build
+    $(MAKE) /f nmakefile $(EXES:tests=build)
+
+{tests\}.cpp{build\}.exe:
+    $(CC) /I $(INCLUDES) $(CXXFLAGS) /Fe$@ $<
+
+clean:
+    del /Q build

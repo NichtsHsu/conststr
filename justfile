@@ -3,9 +3,12 @@ outpath := "./build"
 include := "./include"
 default_cc := "/usr/bin/env g++"
 cppflags := "-std=c++20 -Wall"
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
 alias b := build-tests
 alias t := run-tests
+alias nt := nmake-tests
+alias c := clean
 
 build-tests cc=default_cc:
     #!/bin/bash
@@ -25,3 +28,10 @@ run-tests cc=default_cc: (build-tests cc)
     for bin in {{ outpath }}/*; do
         $bin;
     done
+
+nmake-tests:
+    nmake -f nmakefile
+    Get-ChildItem build -Filter *.exe | Foreach-Object { & $_.FullName }
+
+clean:
+    rm -r ./build

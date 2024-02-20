@@ -176,8 +176,9 @@
  * };
  * @endcode
  * 
- * Then you can get the name of its members via `reflect::name_of` or get the type of
- * its members via `reflect::type_of` like the following example:
+ * Then you can get the name of its members via `reflect::name_of`, get the type of
+ * its members via `reflect::type_of`/`reflect::type_of_member`, or get the reference
+ * to object's member via `reflect::member_of` like the following example:
  * 
  * @code{.cpp}
  * #include "reflect.hpp"
@@ -189,14 +190,32 @@
  * };
  * 
  * int main() {
+ *     // Get member type of `MyStruct` via index
  *     reflect::type_of<MyStruct, 0> a = 1;        // type of `a` is `int`
  *     reflect::type_of<MyStruct, 1> b = 1.f;      // type of `b` is `double`
  *     reflect::type_of<MyStruct, 2> c = "hello";  // type of `c` is `std::string`
  * 
+ *     // Also you can get member type via its name
+ *     reflect::type_of_member<MyStruct, "number"> d = 1;
+ *     reflect::type_of_member<MyStruct, "decimal"> e = 1.f;
+ *     reflect::type_of_member<MyStruct, "name"> f = "hello";
+ * 
+ *     // Get member name via index
  *     std::cout << reflect::number_of_members<MyStruct> << std::endl; // 3 members in `MyStruct`
  *     std::cout << reflect::name_of<MyStruct, 0> << std::endl;        // first member is "number"
  *     std::cout << reflect::name_of<MyStruct, 1> << std::endl;        // second member is "decimal"
  *     std::cout << reflect::name_of<MyStruct, 2> << std::endl;        // third member is "name"
+ * 
+ *     // Get member reference via index ...
+ *     MyStruct s;
+ *     decltype(auto) numref = reflect::member_of<0>(s);
+ *     numref = 100;
+ *     std::cout << s.number << std::endl;
+ * 
+ *     // ...or, via its name
+ *     decltype(auto) nameref = reflect::member_of<"name">(s);
+ *     nameref += "hello world";
+ *     std::cout << s.name << std::endl;
  * 
  *     return 0;
  * }

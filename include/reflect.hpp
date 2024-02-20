@@ -1771,8 +1771,8 @@ consteval auto cptr_of_member() {
  * @note
  * When using MSVC, will return a string in the form of
  * `"auto __cdecl reflect::pretty_name<...>(void)"`.
- * @tparam Ptr pointer to the the variable or field you want to reflect
- * @return A compile-time string containing the name of the variable or field
+ * @tparam Ptr pointer to the the variable or member you want to reflect
+ * @return A compile-time string containing the name of the variable or member
  * and of type `conststr::cstr`.
  * @see conststr::cstr
  * @see name_of()
@@ -1866,6 +1866,108 @@ constexpr auto name_of_ptr = name_of_ptr_impl<Ptr>();
 template <typename T, std::size_t N>
 constexpr auto name_of = name_of_ptr<cptr_of_member<T, N>()>;
 #endif
+
+/**
+ * @brief Internal implementation of `index_of`.
+ * Get the index of the member by its name.
+ * @tparam T any default-constructible aggregate type
+ * @tparam Name name of the member to search
+ * @tparam SrchIdx for recursion only, keep it 0
+ * @return Index of the member.
+ * @see index_of
+ */
+template <typename T, conststr::cstr Name, std::size_t SrchIdx>
+constexpr size_t index_of_impl()
+    requires(number_of_members<T> > SrchIdx)
+{
+    if constexpr (Name == name_of<T, SrchIdx>)
+        return SrchIdx;
+    else
+        return index_of_impl<T, Name, SrchIdx + 1>();
+}
+
+/**
+ * @brief Get the index of the member by its name.
+ * @details
+ * For example, `reflect::index_of<S, "point">` if the type `S` has a member named `point`.
+ * @tparam T any default-constructible aggregate type
+ * @tparam Name name of the member to search
+ * @return Index of the member.
+ */
+template <typename T, conststr::cstr Name>
+constexpr size_t index_of = index_of_impl<T, Name, 0>();
+
+/**
+ * @brief Get the type of the member by its name.
+ * @details
+ * This is just a simplified API of `reflect::type_of<T, reflect::index_of<T, Name>>`.
+ * @tparam T any default-constructible aggregate type
+ * @tparam Name name of the member to search
+ */
+template <typename T, conststr::cstr Name>
+using type_of_member = type_of<T, index_of<T, Name>>;
+
+/**
+ * @brief Get member reference of object `t`.
+ * @details
+ * Please use `decltype(auto)` for deducing the return value type.
+ * For example:
+ * @code{.cpp}
+ * struct S {
+ *     int x;
+ *     int y;
+ *     int z;
+ * };
+ * S s = {};
+ * decltype(auto) zref = reflect::member_of<2>(s);
+ * zref = 10;
+ * if (s.z == 10)
+ *      std::cout << "Ok" << std::endl;
+ * @endcode
+ * @tparam N index of member
+ * @tparam T DO NOT specify it, let it be automatically deduced
+ * @param t object of type `T`
+ * @return L-value reference if `t` is a l-value reference.
+ * @return R-value reference if `t` is a r-value reference.
+ */
+template <std::size_t N, typename T>
+constexpr decltype(auto) member_of(T &&t) {
+    if constexpr (std::is_lvalue_reference_v<T>)
+        return std::get<N>(to_tuple(std::forward<T>(t)));
+    else
+        return std::move(std::get<N>(to_tuple(std::forward<T>(t))));
+}
+
+/**
+ * @brief Get member reference of object `t` via member's name.
+ * @details
+ * Please use `decltype(auto)` for deducing the return value type.
+ * For example:
+ * @code{.cpp}
+ * struct S {
+ *     int x;
+ *     int y;
+ *     int z;
+ * };
+ * S s = {};
+ * decltype(auto) zref = reflect::member_of<"z">(s);
+ * zref = 10;
+ * if (s.z == 10)
+ *      std::cout << "Ok" << std::endl;
+ * @endcode
+ * @tparam Name name of member
+ * @tparam T DO NOT specify it, let it be automatically deduced
+ * @param t object of type `T`
+ * @return L-value reference if `t` is a l-value reference.
+ * @return R-value reference if `t` is a r-value reference.
+ */
+template <conststr::cstr Name, typename T>
+constexpr decltype(auto) member_of(T &&t)
+    requires std::same_as<typename decltype(Name)::value_type, char>
+{
+    return member_of<index_of<std::remove_cvref_t<T>, Name>, T>(
+        std::forward<T>(t));
+}
 }  // namespace reflect
 
 #endif

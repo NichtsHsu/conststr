@@ -42,16 +42,16 @@ int main() {
     static_assert(std::same_as<reflect::type_of<MyStruct, 9>,
                                std::reference_wrapper<int>>);
 
-    static_assert(reflect::name_of<MyStruct, 0> == "number"_cs);
-    static_assert(reflect::name_of<MyStruct, 1> == "decimal"_cs);
-    static_assert(reflect::name_of<MyStruct, 2> == "name"_cs);
-    static_assert(reflect::name_of<MyStruct, 3> == "array"_cs);
-    static_assert(reflect::name_of<MyStruct, 4> == "pointer"_cs);
-    static_assert(reflect::name_of<MyStruct, 5> == "func_pointer"_cs);
-    static_assert(reflect::name_of<MyStruct, 6> == "member_pointer"_cs);
-    static_assert(reflect::name_of<MyStruct, 7> == "member_func_point"_cs);
-    static_assert(reflect::name_of<MyStruct, 8> == "uncopyable"_cs);
-    static_assert(reflect::name_of<MyStruct, 9> == "ref_wrapper"_cs);
+    static_assert(reflect::name_of<MyStruct, 0> == "number");
+    static_assert(reflect::name_of<MyStruct, 1> == "decimal");
+    static_assert(reflect::name_of<MyStruct, 2> == "name");
+    static_assert(reflect::name_of<MyStruct, 3> == "array");
+    static_assert(reflect::name_of<MyStruct, 4> == "pointer");
+    static_assert(reflect::name_of<MyStruct, 5> == "func_pointer");
+    static_assert(reflect::name_of<MyStruct, 6> == "member_pointer");
+    static_assert(reflect::name_of<MyStruct, 7> == "member_func_point");
+    static_assert(reflect::name_of<MyStruct, 8> == "uncopyable");
+    static_assert(reflect::name_of<MyStruct, 9> == "ref_wrapper");
 
     std::cout << __FILE__ ": all tests passed." << std::endl;
 
